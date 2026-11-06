@@ -10,7 +10,7 @@ import 'firebase_options.dart'; // dibuat otomatis oleh `flutterfire configure`
 
 /// Alamat web (GitHub Pages) untuk link share saat tombol share ditekan dari apk.
 /// GANTI sesuai akun GitHub dan nama repo-mu.
-const String kShareBase = 'https://USERNAME.github.io/NAMA-REPO/';
+const String kShareBase = 'https://Alexiaa15.github.io/bracket-arena/';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -238,10 +238,12 @@ class Tournament {
     for (var r = 0; r < rounds.length; r++) {
       for (var i = 0; i < rounds[r].matches.length; i++) {
         final m = rounds[r].matches[i];
-        if (m.played) out['${r}_$i'] = {'sa': m.sa, 'sb': m.sb, 'w': m.winner};
+        if (m.played || m.sa > 0 || m.sb > 0) {
+          out['${r}_$i'] = {'sa': m.sa, 'sb': m.sb, 'w': m.winner};
+        }
       }
     }
-    if (hasThird && third.played) {
+    if (hasThird && (third.played || third.sa > 0 || third.sb > 0)) {
       out['third'] = {'sa': third.sa, 'sb': third.sb, 'w': third.winner};
     }
     return out;
@@ -249,12 +251,12 @@ class Tournament {
 
   void applyResults(Map<String, dynamic> res) {
     void apply(MatchModel m, dynamic raw) {
-      if (raw is! Map) return;
+      if (raw is! Map || m.a == null || m.b == null) return;
       final w = (raw['w'] as num?)?.toInt();
-      if (w == null || (w != m.a && w != m.b)) return;
+      if (w != null && w != m.a && w != m.b) return;
       m.sa = (raw['sa'] as num?)?.toInt() ?? 0;
       m.sb = (raw['sb'] as num?)?.toInt() ?? 0;
-      m.winner = w;
+      m.winner = w; // null = skor sementara (match belum selesai)
     }
 
     for (var r = 0; r < rounds.length; r++) {
@@ -1107,6 +1109,7 @@ class _MatchCard extends StatelessWidget {
   });
 
   bool get ready => !readOnly && m.a != null && m.b != null && !m.played;
+  bool get inProgress => !m.played && (m.sa > 0 || m.sb > 0);
 
   @override
   Widget build(BuildContext context) {
@@ -1120,17 +1123,19 @@ class _MatchCard extends StatelessWidget {
 
   Widget _body(double glow) {
     final border = ready
-        ? alpha(kTeal, 0.45 + 0.5 * glow)
+        ? alpha(inProgress ? kGold : kTeal, 0.45 + 0.5 * glow)
         : m.played
             ? alpha(kAccent, 0.8)
-            : alpha(Colors.white, 0.12);
+            : inProgress
+                ? alpha(kGold, 0.7)
+                : alpha(Colors.white, 0.12);
     return Container(
       decoration: BoxDecoration(
         color: kCard,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: border, width: ready ? 2 : 1.5),
         boxShadow: ready
-            ? [BoxShadow(color: alpha(kTeal, 0.12 + 0.25 * glow), blurRadius: 8 + 16 * glow)]
+            ? [BoxShadow(color: alpha(inProgress ? kGold : kTeal, 0.12 + 0.25 * glow), blurRadius: 8 + 16 * glow)]
             : m.played
                 ? [BoxShadow(color: alpha(kAccent, 0.3), blurRadius: 14)]
                 : const <BoxShadow>[],
@@ -1184,12 +1189,12 @@ class _MatchCard extends StatelessWidget {
               ),
             ),
           ),
-          if (m.played)
+          if (m.played || inProgress)
             Text('$score',
                 style: TextStyle(
                     fontWeight: FontWeight.w800,
                     fontSize: 16,
-                    color: win ? kTeal : alpha(Colors.white, 0.5))),
+                    color: win ? kTeal : (inProgress ? kGold : alpha(Colors.white, 0.5)))),
           if (win)
             const Padding(
               padding: EdgeInsets.only(left: 4),
@@ -1262,8 +1267,8 @@ class _Geo {
 
 class _Res {
   final int sa, sb, side;
-  final bool clear;
-  const _Res(this.sa, this.sb, this.side, {this.clear = false});
+  final bool clear, finish;
+  const _Res(this.sa, this.sb, this.side, {this.clear = false, this.finish = false});
 }
 
 class BracketPage extends StatefulWidget {
@@ -1457,7 +1462,7 @@ class _BracketPageState extends State<BracketPage> with TickerProviderStateMixin
       } else {
         cur.sa = res.sa;
         cur.sb = res.sb;
-        cur.winner = res.side == 0 ? cur.a : cur.b;
+        cur.winner = res.finish ? (res.side == 0 ? cur.a : cur.b) : null;
       }
       t.propagate();
     });
@@ -2154,7 +2159,7 @@ class _ScoreSheetState extends State<_ScoreSheet> {
                         const SizedBox(width: 6),
                         Flexible(
                           child: Text(
-                            '${t.names[winSide == 0 ? idA : idB]} menang!',
+                            '${t.names[winSide == 0 ? idA : idB]} menang! Tekan Selesaikan.',
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
                                 color: kGold, fontWeight: FontWeight.w800, fontSize: 16),
@@ -2162,42 +2167,44 @@ class _ScoreSheetState extends State<_ScoreSheet> {
                         ),
                       ],
                     )
-                  : Text('Isi skor sesuai aturan BO',
+                  : Text('Syarat BO belum terpenuhi. Simpan sementara dulu, selesaikan nanti.',
                       key: const ValueKey('no'),
                       style: TextStyle(color: alpha(Colors.white, 0.45))),
             ),
             const SizedBox(height: 14),
-            Row(
-              children: [
-                if (m.played) ...[
-                  Expanded(
-                    child: OutlinedButton(
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(18)),
-                        side: BorderSide(color: alpha(Colors.white, 0.25)),
-                      ),
-                      onPressed: () =>
-                          Navigator.pop(context, const _Res(0, 0, 0, clear: true)),
-                      child: const Text('Hapus hasil'),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                ],
-                Expanded(
-                  flex: 2,
-                  child: _GradientButton(
-                    label: 'Simpan hasil',
-                    icon: Icons.check_rounded,
-                    colors: const [kTeal, Color(0xFF12B7A0)],
-                    onTap: ok
-                        ? () => Navigator.pop(context, _Res(sa, sb, winSide!))
-                        : null,
-                  ),
-                ),
-              ],
+            SizedBox(
+              width: double.infinity,
+              child: _GradientButton(
+                label: 'Selesaikan match',
+                icon: Icons.check_rounded,
+                colors: const [kTeal, Color(0xFF12B7A0)],
+                onTap: ok
+                    ? () => Navigator.pop(
+                        context, _Res(sa, sb, winSide!, finish: true))
+                    : null,
+              ),
             ),
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(18)),
+                  side: BorderSide(color: alpha(Colors.white, 0.25)),
+                ),
+                onPressed: () => Navigator.pop(context, _Res(sa, sb, -1)),
+                icon: const Icon(Icons.save_outlined, size: 20),
+                label: const Text('Simpan sementara'),
+              ),
+            ),
+            if (m.played || m.sa > 0 || m.sb > 0)
+              TextButton(
+                onPressed: () =>
+                    Navigator.pop(context, const _Res(0, 0, 0, clear: true)),
+                child: const Text('Reset skor match ini'),
+              ),
           ],
         ),
       ),
