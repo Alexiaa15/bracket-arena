@@ -1,0 +1,1 @@
+{"flutter":{"platforms":{"android":{"default":{"projectId":"bracket-arena","appId":"1:411098214336:android:b654e585f5955e10d6e225","fileOutput":"android/app/google-services.json"}},"dart":{"lib/firebase_options.dart":{"projectId":"bracket-arena","configurations":{"android":"1:411098214336:android:b654e585f5955e10d6e225","web":"1:411098214336:web:f5f53a6d8db3a57ad6e225"}}}}}}
